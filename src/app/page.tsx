@@ -1,0 +1,2800 @@
+"use client";
+
+import { useEffect, useState } from "react";
+// แสดงวันที่เป็น วัน/เดือน/ปี เช่น 22/09/2026
+const formatDate = (dateString: string) => {
+  if (!dateString) return "-";
+
+  const [year, month, day] = dateString.split("-");
+
+  if (!year || !month || !day) return dateString;
+
+  return `${day}/${month}/${year}`;
+};
+type Sale = {
+  id: number;
+  number: string;
+  quantity: number;
+  price: number;
+  total: number;
+  date: string;
+};
+type StockItem = {
+  id: number;
+  ticketNumber: string;
+  number: string;
+  quantity: number;
+  date: string;
+  importMethod?: "พิมพ์" | "สแกน";
+};
+export default function Home() {
+  const [number, setNumber] = useState("");
+  const [quantity, setQuantity] = useState("1");
+  const [price, setPrice] = useState("100");
+  const [search, setSearch] = useState("");
+ const [selectedDate, setSelectedDate] = useState(() => {
+  const today = new Date();
+
+  const year = today.getFullYear();
+ const month = String(today.getMonth() + 1).padStart(2, "0");
+  const day = String(today.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+});
+  const [selectedMonth, setSelectedMonth] = useState(() => {
+    const today = new Date();
+    return (
+      today.getFullYear() +
+      "-" +
+      String(today.getMonth() + 1).padStart(2, "0")
+    );
+  });
+ 
+  const [sales, setSales] = useState<Sale[]>([]);
+const [editingSale, setEditingSale] = useState<Sale | null>(null);
+  const [salesLoaded, setSalesLoaded] = useState(false);
+  // ข้อมูลสต๊อกหวย
+  const [stockNumber, setStockNumber] = useState("");
+  const [stockQuantity, setStockQuantity] = useState("1");
+  const [stockItems, setStockItems] = useState<StockItem[]>([]);
+  const [stockMessage, setStockMessage] = useState("");
+  const [scanNumber, setScanNumber] = useState("");
+  
+  const [stockLoaded, setStockLoaded] = useState(false);// เมนูหน้าจัดการสลาก
+const [activeMenu, setActiveMenu] = useState("stock");
+
+useEffect(() => {
+  const savedStock = localStorage.getItem("lottery-stock");
+
+  if (savedStock) {
+    setStockItems(JSON.parse(savedStock));
+  }
+
+  setStockLoaded(true);
+}, []);
+
+useEffect(() => {
+  if (stockLoaded) {
+    localStorage.setItem(
+      "lottery-stock",
+      JSON.stringify(stockItems)
+    );
+  }
+}, [stockItems, stockLoaded]);
+    // วันที่ปัจจุบันตามเวลาท้องถิ่น
+  const localDate = (() => {
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, "0");
+    const day = String(today.getDate()).padStart(2, "0");
+
+    return `${year}-${month}-${day}`;
+  })();
+  useEffect(() => {
+    try {
+      const savedSales = localStorage.getItem("lottery-sales");
+
+      if (savedSales) {
+        const parsedSales = JSON.parse(savedSales);
+
+        setSales(
+          parsedSales.map((sale: Sale) => ({
+            ...sale,
+            date: sale.date || localDate,
+          }))
+        );
+      }
+    } catch {
+      console.log("ไม่สามารถอ่านข้อมูลเดิมได้");
+    }
+
+    setSalesLoaded(true);
+  }, []);
+
+  useEffect(() => {
+    if (!salesLoaded) return;
+
+    localStorage.setItem("lottery-sales", JSON.stringify(sales));
+  }, [sales, salesLoaded]);
+
+  // เพิ่มรายการขาย
+  
+const addSale = () => {
+  if (!/^\d{3}$|^\d{6}$/.test(number)) {
+  alert("กรุณาใส่เลข 3 หลัก หรือ 6 หลัก เช่น 123 หรือ 123456");
+  return;
+}
+
+  const qty = Number(quantity);
+  const unitPrice = Number(price);
+
+  if (qty <= 0 || unitPrice <= 0) {
+    alert("กรุณาตรวจสอบจำนวนและราคา");
+    return;
+  }
+
+  // แปลงเลขขายให้เป็นเลขท้าย 3 ตัว
+  // รองรับทั้งเลข 3 หลักและเลขสลาก 6 หลัก
+  const saleNumber =
+    number.length === 6 ? number.slice(-3) : number;
+
+  // จำนวนสต๊อกที่รับเข้าทั้งหมด
+  const receivedStock = stockItems
+    .filter((item) => item.number === saleNumber)
+    .reduce((sum, item) => sum + item.quantity, 0);
+
+  // จำนวนที่ขายไปแล้ว
+  const soldStock = sales
+    .filter((sale) => {
+      const savedNumber =
+        sale.number.length === 6
+          ? sale.number.slice(-3)
+          : sale.number;
+
+      return savedNumber === saleNumber;
+    })
+    .reduce((sum, sale) => sum + sale.quantity, 0);
+
+  // จำนวนคงเหลือจริง
+  const availableStock = receivedStock - soldStock;
+
+// ตรวจสอบว่าสต๊อกเพียงพอหรือไม่
+if (availableStock < qty) {
+  alert(
+    `สต๊อกเลข ${number} ไม่เพียงพอ เหลือ ${availableStock} ใบ`
+  );
+  return;
+}
+   
+
+  const newSale: Sale = {
+    id: Date.now(),
+    number,
+    quantity: qty,
+    price: unitPrice,
+    total: qty * unitPrice,
+    date: (() => {
+      const today = new Date();
+
+      return (
+        today.getFullYear() +
+        "-" +
+        String(today.getMonth() + 1).padStart(2, "0") +
+        "-" +
+        String(today.getDate()).padStart(2, "0")
+      );
+    })(),
+  };
+
+  // หักสต๊อกตามจำนวนที่ขาย
+  let remaining = qty;
+
+  const updatedStock = stockItems
+    .map((item) => {
+      if (item.number !== saleNumber || remaining <= 0) {
+        return item;
+      }
+
+      const deducted = Math.min(item.quantity, remaining);
+      remaining -= deducted;
+
+      return {
+        ...item,
+        quantity: item.quantity - deducted,
+      };
+    })
+    .filter((item) => item.quantity > 0);
+
+  // บันทึกสต๊อกที่หักแล้ว
+  setStockItems(updatedStock);
+
+  localStorage.setItem(
+    "lottery-stock",
+    JSON.stringify(updatedStock)
+  );
+
+  // บันทึกการขาย
+  setSales((prev) => [...prev, newSale]);
+
+  setNumber("");
+  setQuantity("1");
+
+  alert("บันทึกการขายและหักสต๊อกสำเร็จ");
+};
+// เพิ่มสต๊อกหวย
+
+  // ลบรายการสต๊อก
+  const deleteStock = (id: number) => {
+    if (!confirm("ต้องการลบรายการสต๊อกนี้หรือไม่?")) {
+      return;
+    }
+
+    setStockItems((prev) => {
+      const updatedStock = prev.filter((item) => item.id !== id);
+
+      localStorage.setItem(
+        "lottery-stock",
+        JSON.stringify(updatedStock)
+      );
+
+      return updatedStock;
+    });
+
+    alert("ลบรายการสต๊อกสำเร็จ");
+  };
+
+  // เพิ่มสต๊อกหวย
+  const addStock = () => {
+    if (!/^\d{6}$/.test(stockNumber)) {
+      alert("กรุณาใส่เลขสลาก 6 หลัก เช่น 730640");
+      return;
+    }
+
+    const qty = Number(stockQuantity);
+
+    if (qty <= 0) {
+      alert("กรุณาตรวจสอบจำนวนสต๊อก");
+      return;
+    }
+
+    const newStock: StockItem = {
+      id: Date.now(),
+      ticketNumber: stockNumber,
+      number: stockNumber.slice(-3),
+      quantity: qty,
+      date: selectedDate,
+      importMethod: "พิมพ์",
+    };
+
+    setStockItems((prev) => {
+      const updatedStock = [...prev, newStock];
+
+      localStorage.setItem(
+        "lottery-stock",
+        JSON.stringify(updatedStock)
+      );
+
+      return updatedStock;
+    });
+
+    setStockNumber("");
+    setStockQuantity("1");
+
+    alert("บันทึกสต๊อกสำเร็จ");
+  };
+
+  // บันทึกสลากจากการสแกน
+  const saveScannedStock = () => {
+    const scannedNumber = scanNumber.trim();
+
+    if (!/^\d{6}$/.test(scannedNumber)) {
+      alert("กรุณาสแกนเลขสลาก 6 หลัก");
+      return;
+    }
+
+    const scannedStock: StockItem = {
+      id: Date.now(),
+      ticketNumber: scannedNumber,
+      number: scannedNumber.slice(-3),
+      quantity: 1,
+      date: selectedDate,
+      importMethod: "สแกน",
+    };
+
+    setStockItems((prev) => {
+      const updatedStock = [...prev, scannedStock];
+
+      localStorage.setItem(
+        "lottery-stock",
+        JSON.stringify(updatedStock)
+      );
+
+      return updatedStock;
+    });
+
+    
+    setActiveMenu("stock");
+
+// ล้างเลขออกจากช่องสแกนหลังบันทึกสำเร็จ
+setScanNumber("");
+
+alert("บันทึกสลากจากการสแกนสำเร็จ");
+  };
+
+// ลบรายการ
+  const deleteSale = (id: number) => {
+    setSales((old) => old.filter((sale) => sale.id !== id));
+  };
+    // แก้ไขรายการ
+  const editSale = (id: number) => {
+    const sale = sales.find((item) => item.id === id);
+
+    if (!sale) return;
+
+    setEditingSale(sale);
+  };   // บันทึกการแก้ไข
+  const saveEditSale = () => {
+    if (!editingSale) return;
+
+    if (!editingSale.number.trim()) {
+      alert("กรุณากรอกเลข");
+      return;
+    }
+
+    if (editingSale.quantity <= 0) {
+      alert("จำนวนต้องมากกว่า 0");
+      return;
+    }
+
+    if (editingSale.price <= 0) {
+      alert("ราคาต้องมากกว่า 0");
+      return;
+    }
+
+    const updatedSale = {
+      ...editingSale,
+      total: editingSale.quantity * editingSale.price,
+    };
+
+    setSales((old) =>
+      old.map((sale) =>
+        sale.id === editingSale.id ? updatedSale : sale
+      )
+    );
+
+    setEditingSale(null);
+    alert("แก้ไขรายการเรียบร้อยแล้ว");
+  };
+
+  // ล้างทั้งหมด
+  const clearAll = () => {
+    if (sales.length === 0) return;
+
+    if (confirm("ต้องการล้างรายการขายทั้งหมดหรือไม่?")) {
+      setSales([]);
+    }
+  };
+
+  // ค้นหา
+  const selectedSales = sales.filter(
+    (sale) => sale.date === selectedDate
+  );
+
+  const monthlySales = sales.filter(
+    (sale) => sale.date.startsWith(selectedMonth)
+  );
+
+  const monthlyQuantity = monthlySales.reduce(
+    (sum, sale) => sum + sale.quantity,
+    0
+  );
+
+  const monthlyMoney = monthlySales.reduce(
+    (sum, sale) => sum + sale.total,
+    0
+  );
+
+  const monthlyDays = new Set(
+    monthlySales.map((sale) => sale.date)
+  ).size;
+const dailySummary = Object.values(
+  monthlySales.reduce((acc, sale) => {
+    if (!acc[sale.date]) {
+      acc[sale.date] = {
+        date: sale.date,
+        quantity: 0,
+        total: 0,
+        count: 0,
+      };
+    }
+
+    acc[sale.date].quantity += sale.quantity;
+    acc[sale.date].total += sale.total;
+    acc[sale.date].count += 1;
+
+    return acc;
+  }, {} as Record<string, {
+    date: string;
+    quantity: number;
+    total: number;
+    count: number;
+  }>)
+);
+dailySummary.sort((a, b) => a.date.localeCompare(b.date));
+  const filteredSales = selectedSales.filter((sale) =>
+    sale.number.includes(search)
+  );
+
+  // คำนวณ
+  const totalQuantity = selectedSales.reduce(
+    (sum, sale) => sum + sale.quantity,
+    0
+  );
+
+  const totalMoney = selectedSales.reduce(
+    (sum, sale) => sum + sale.total,
+    0
+  );
+
+  const numberSummary = Object.values(
+    selectedSales.reduce((acc, sale) => {
+      if (!acc[sale.number]) {
+        acc[sale.number] = {
+          number: sale.number,
+          count: 0,
+          quantity: 0,
+          total: 0,
+        };
+      }
+
+      acc[sale.number].count += 1;
+      acc[sale.number].quantity += sale.quantity;
+      acc[sale.number].total += sale.total;
+
+      return acc;
+    }, {} as Record<string, { number: string; count: number; quantity: number; total: number }>)
+  );
+
+  // สำรองข้อมูล
+  const backupData = () => {
+    const data = localStorage.getItem("lottery-sales");
+
+    if (!data) {
+      alert("ยังไม่มีข้อมูลสำหรับสำรอง");
+      return;
+    }
+
+    const blob = new Blob([data], {
+      type: "application/json",
+    });
+
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+
+    const today = new Date();
+    const fileDate =
+      today.getFullYear() +
+      "-" +
+      String(today.getMonth() + 1).padStart(2, "0") +
+      "-" +
+      String(today.getDate()).padStart(2, "0");
+
+    a.href = url;
+    a.download = `หวยหุ้นสำรอง-${fileDate}.json`;
+    a.click();
+
+    URL.revokeObjectURL(url);
+
+    alert("สำรองข้อมูลเรียบร้อยแล้ว");
+  };
+
+
+  // ส่งออกข้อมูลเป็น CSV
+  const exportCSV = () => {
+    if (selectedSales.length === 0) {
+      alert("ไม่มีข้อมูลของวันที่เลือกสำหรับส่งออก");
+      return;
+    }
+
+    const header = [
+      "ลำดับ",
+      "วันที่",
+      "เลข",
+      "จำนวนใบ",
+      "ราคา/ใบ",
+      "ยอดเงิน",
+    ];
+
+    const rows = selectedSales.map((sale, index) => [
+      index + 1,
+      sale.date,
+      sale.number,
+      sale.quantity,
+      sale.price,
+      sale.total,
+    ]);
+
+    const escapeCSV = (value: string | number) =>
+      `"${String(value).replace(/"/g, '""')}"`;
+
+    const csv = [
+      header,
+      ...rows,
+    ]
+      .map((row) => row.map(escapeCSV).join(","))
+      .join("\n");
+
+    const blob = new Blob(
+      ["\uFEFF" + csv],
+      { type: "text/csv;charset=utf-8;" }
+    );
+
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+
+    a.href = url;
+    a.download = `หวยหุ้น-${selectedDate}.csv`;
+    a.click();
+
+    URL.revokeObjectURL(url);
+
+    alert("ส่งออกข้อมูล CSV เรียบร้อยแล้ว");
+  };
+
+  
+  const restoreData = () => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".json,application/json";
+
+    input.onchange = async () => {
+      const file = input.files?.[0];
+
+      if (!file) return;
+
+      try {
+        const text = await file.text();
+        const parsed = JSON.parse(text);
+
+        if (!Array.isArray(parsed)) {
+          alert("ไฟล์สำรองข้อมูลไม่ถูกต้อง");
+          return;
+        }
+
+        const valid = parsed.every(
+          (sale) =>
+            sale &&
+            typeof sale.number === "string" &&
+            typeof sale.quantity === "number" &&
+            typeof sale.price === "number" &&
+            typeof sale.total === "number"
+        );
+
+        if (!valid) {
+          alert("รูปแบบข้อมูลในไฟล์ไม่ถูกต้อง");
+          return;
+        }
+
+        if (
+          !confirm(
+            "ต้องการกู้คืนข้อมูลจากไฟล์นี้หรือไม่?\nข้อมูลปัจจุบันจะถูกแทนที่"
+          )
+        ) {
+          return;
+        }
+
+        setSales(parsed);
+        alert("กู้คืนข้อมูลเรียบร้อยแล้ว");
+      } catch {
+        alert("ไม่สามารถอ่านไฟล์สำรองข้อมูลได้");
+      }
+    };
+
+    input.click();
+  };
+
+  const printMonthlyReport = () => {
+    const rows = dailySummary
+      .map(
+        (item) => `
+          <tr>
+            ${formatDate(item.date)}</td>
+            <td>${item.count.toLocaleString()} รายการ</td>
+            <td>${item.quantity.toLocaleString()} ใบ</td>
+            <td>${item.total.toLocaleString()} บาท</td>
+          </tr>
+        `
+      )
+      .join("");
+
+    const monthLabel = new Date(
+      selectedMonth + "-01T00:00:00"
+    ).toLocaleDateString("th-TH", {
+      year: "numeric",
+      month: "long",
+    });
+
+    const printWindow = window.open("", "_blank");
+
+    if (!printWindow) return;
+
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>รายงานยอดขายรายเดือน</title>
+          <style>
+            body {
+              font-family: Arial, sans-serif;
+              padding: 30px;
+            }
+            h1, h2 {
+              text-align: center;
+            }
+            .summary {
+              margin: 20px 0;
+              line-height: 1.8;
+            }
+            table {
+              width: 100%;
+              border-collapse: collapse;
+              margin-top: 20px;
+            }
+            th, td {
+              border: 1px solid #333;
+              padding: 8px;
+              text-align: center;
+            }
+            th {
+              font-weight: bold;
+            }
+            .total {
+              font-weight: bold;
+            }
+          </style>
+        </head>
+
+        <body>
+          <h1>📊 รายงานยอดขายรายเดือน</h1>
+          <h2>${monthLabel}</h2>
+
+          <div class="summary">
+            <div>จำนวนวันที่ขาย: ${monthlyDays.toLocaleString()} วัน</div>
+            <div>จำนวนรายการ: ${monthlySales.length.toLocaleString()} รายการ</div>
+            <div>จำนวนใบ: ${monthlyQuantity.toLocaleString()} ใบ</div>
+            <div>ยอดขายรวม: ${monthlyMoney.toLocaleString()} บาท</div>
+          </div>
+
+          <table>
+            <thead>
+              <tr>
+                <th>วันที่</th>
+                <th>รายการ</th>
+                <th>จำนวนใบ</th>
+                <th>ยอดขาย</th>
+              </tr>
+            </thead>
+
+            <tbody>
+              ${rows}
+            </tbody>
+
+            <tfoot>
+              <tr class="total">
+                <td>รวม</td>
+                <td>${monthlySales.length.toLocaleString()} รายการ</td>
+                <td>${monthlyQuantity.toLocaleString()} ใบ</td>
+                <td>${monthlyMoney.toLocaleString()} บาท</td>
+              </tr>
+            </tfoot>
+          </table>
+        </body>
+      </html>
+    `);
+
+    printWindow.document.close();
+    printWindow.focus();
+    printWindow.print();
+  };
+
+  const printReport = () => {
+    const reportWindow = window.open("", "_blank", "width=900,height=700");
+
+    if (!reportWindow) {
+      alert("ไม่สามารถเปิดหน้าพิมพ์ได้ กรุณาอนุญาต Pop-up ของเว็บไซต์");
+      return;
+    }
+
+    const rows = numberSummary
+      .map(
+        (item, index) => `
+          <tr>
+            <td>${index + 1}</td>
+            <td>${item.number}</td>
+            <td>${item.quantity.toLocaleString()} ใบ</td>
+            <td>${item.total.toLocaleString()} บาท</td>
+          </tr>
+        `
+      )
+      .join("");
+
+    reportWindow.document.write(`
+      <!DOCTYPE html>
+      <html lang="th">
+      <head>
+        <meta charset="UTF-8">
+        <title>รายงานยอดขายหวยหุ้น</title>
+        <style>
+          body {
+            font-family: Arial, sans-serif;
+            padding: 30px;
+            color: #111;
+          }
+
+          h1 {
+            text-align: center;
+            margin-bottom: 5px;
+          }
+
+          .date {
+            text-align: center;
+            margin-bottom: 25px;
+            color: #555;
+          }
+
+          .summary {
+            display: flex;
+            justify-content: space-around;
+            margin-bottom: 25px;
+            font-size: 18px;
+            font-weight: bold;
+          }
+
+          table {
+            width: 100%;
+            border-collapse: collapse;
+          }
+
+          th, td {
+            border: 1px solid #999;
+            padding: 10px;
+            text-align: center;
+          }
+
+          th {
+            background: #eee;
+          }
+
+          .total {
+            font-weight: bold;
+            font-size: 18px;
+          }
+
+          @media print {
+            body {
+              padding: 10px;
+            }
+          }
+        </style>
+      </head>
+
+      <body>
+        <h1>รายงานยอดขายหวยหุ้น</h1>
+
+        <div class="date">
+          วันที่ ${new Date().toLocaleString("th-TH")}
+        </div>
+
+        <div class="summary">
+          <div>รายการขาย: ${selectedSales.length} รายการ</div>
+          <div>จำนวน: ${totalQuantity.toLocaleString()} ใบ</div>
+          <div>ยอดรวม: ${totalMoney.toLocaleString()} บาท</div>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th>ลำดับ</th>
+              <th>เลข</th>
+              <th>จำนวนใบ</th>
+              <th>ยอดเงิน</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            ${rows}
+          </tbody>
+
+          <tfoot>
+            <tr class="total">
+              <td colspan="2">รวมทั้งหมด</td>
+              <td>${totalQuantity.toLocaleString()} ใบ</td>
+              <td>${totalMoney.toLocaleString()} บาท</td>
+            </tr>
+          </tfoot>
+        </table>
+      </body>
+      </html>
+    `);
+
+    reportWindow.document.close();
+    reportWindow.focus();
+    reportWindow.print();
+  };
+  // รวมสต๊อกเลขเดียวกัน
+  const groupedStock = Object.values(
+
+    stockItems.reduce((acc, item) => {
+      if (!acc[item.number]) {
+        acc[item.number] = {
+          ...item,
+          quantity: 0,
+        };
+      }
+
+      acc[item.number].quantity += item.quantity;
+
+      return acc;
+    }, {} as Record<string, StockItem>)
+  );
+  // สรุปสต๊อกแยกตามเลขสลาก 6 หลัก
+  const stockSummary = Object.values(
+    stockItems.reduce(
+      (acc, item) => {
+        const ticketNumber = item.ticketNumber || item.number;
+        const lastThree = ticketNumber.slice(-3);
+
+        if (!acc[ticketNumber]) {
+          acc[ticketNumber] = {
+            number: ticketNumber,
+            lastThree,
+            received: 0,
+            sold: 0,
+            remaining: 0,
+          };
+        }
+
+        acc[ticketNumber].received += item.quantity;
+
+        return acc;
+      },
+      {} as Record<
+        string,
+        {
+          number: string;
+          lastThree: string;
+          received: number;
+          sold: number;
+          remaining: number;
+        }
+      >
+    )
+  ).map((item) => {
+    const sold = sales
+      .filter((sale) => {
+        const saleLastThree =
+          sale.number.length === 6
+            ? sale.number.slice(-3)
+            : sale.number;
+
+        return saleLastThree === item.lastThree;
+      })
+      .reduce((sum, sale) => sum + sale.quantity, 0);
+
+    return {
+      ...item,
+      sold,
+      remaining: Math.max(0, item.received - sold),
+    };
+  });
+  return (
+    <main
+      className="dashboard-page"
+      style={{
+        minHeight: "100vh",
+        background: "#f1f5f9",
+        padding: "20px",
+        fontFamily: "Arial, sans-serif",
+      }}
+    >
+      <div
+        style={{
+          maxWidth: "1000px",
+          margin: "0 auto",
+        }}
+      >
+
+        {/* หัวระบบ */}
+        <header
+          style={{
+            background: "#166534",
+            color: "white",
+            padding: "25px",
+            borderRadius: "18px",
+            marginBottom: "20px",
+            textAlign: "center",
+          }}
+        >
+          <h1 style={{ margin: 0 }}>
+            🎯 ระบบจัดการหวยหุ้น
+          </h1>
+
+          <p style={{ marginBottom: 0 }}>
+            ระบบบันทึกเลขขายและคำนวณยอดเงิน
+          </p>
+        </header>
+        {/* เมนูระบบ */}
+        <nav
+          className="dashboard-nav"
+          style={{
+            background: "white",
+            padding: "15px",
+            borderRadius: "15px",
+            marginBottom: "20px",
+            display: "flex",
+            gap: "10px",
+            flexWrap: "wrap",
+            justifyContent: "center",
+            boxShadow: "0 2px 8px #0002",
+          }}
+        >
+          <button
+            onClick={() => setActiveMenu("stock")}
+            style={{
+              padding: "12px 18px",
+              borderRadius: "10px",
+              border: "none",
+              cursor: "pointer",
+              background:
+                activeMenu === "stock" ? "#166534" : "#e5e7eb",
+              color:
+                activeMenu === "stock" ? "white" : "#111827",
+              fontWeight: "bold",
+            }}
+          >
+            📦 รับสต๊อก
+          </button>
+
+          <button
+            onClick={() => setActiveMenu("all")}
+            style={{
+              padding: "12px 18px",
+              borderRadius: "10px",
+              border: "none",
+              cursor: "pointer",
+              background:
+                activeMenu === "all" ? "#166534" : "#e5e7eb",
+              color:
+                activeMenu === "all" ? "white" : "#111827",
+              fontWeight: "bold",
+            }}
+          >
+            📋 สลากทั้งหมด
+          </button>
+
+          <button
+            onClick={() => setActiveMenu("scan")}
+            style={{
+              padding: "12px 18px",
+              borderRadius: "10px",
+              border: "none",
+              cursor: "pointer",
+              background:
+                activeMenu === "scan" ? "#166534" : "#e5e7eb",
+              color:
+                activeMenu === "scan" ? "white" : "#111827",
+              fontWeight: "bold",
+            }}
+          >
+            📷 สแกนบาร์โค้ด
+ </button>
+          
+
+          <button
+            onClick={() => setActiveMenu("sales")}
+            style={{
+              padding: "12px 18px",
+              borderRadius: "10px",
+              border: "none",
+              cursor: "pointer",
+              background:
+                activeMenu === "sales" ? "#166534" : "#e5e7eb",
+              color:
+                activeMenu === "sales" ? "white" : "#111827",
+              fontWeight: "bold",
+            }}
+          >
+            🧾 บันทึกการขาย
+          </button>
+
+          <button
+            onClick={() => setActiveMenu("report")}
+            style={{
+              padding: "12px 18px",
+              borderRadius: "10px",
+              border: "none",
+              cursor: "pointer",
+              background:
+                activeMenu === "report" ? "#166534" : "#e5e7eb",
+              color:
+                activeMenu === "report" ? "white" : "#111827",
+              fontWeight: "bold",
+            }}
+          >
+            📊 รายงาน
+          </button>
+
+        </nav>
+        
+        {/* เนื้อหาตามเมนูที่เลือก */}
+        {activeMenu === "all" && (
+          <section
+            style={{
+              background: "white",
+              padding: "20px",
+              borderRadius: "15px",
+              marginBottom: "20px",
+              boxShadow: "0 2px 8px #0002",
+            }}
+          >
+            <h2 style={{ marginTop: 0 }}>
+              📋 รายการสลากทั้งหมด
+            </h2>
+
+            {stockItems.length === 0 ? (
+              <p>ยังไม่มีรายการสลากในสต๊อก</p>
+            ) : (
+              <div style={{ overflowX: "auto" }}>
+                <table
+                  style={{
+                    width: "100%",
+                    borderCollapse: "collapse",
+                    textAlign: "center",
+                  }}
+                >
+                  <thead>
+                    <tr style={{ background: "#166534", color: "white" }}>
+                      <th style={{ padding: "10px" }}>ลำดับ</th>
+                      <th style={{ padding: "10px" }}>เลขสลาก 6 หลัก</th>
+                      <th style={{ padding: "10px" }}>เลขท้าย 3 ตัว</th>
+                      <th style={{ padding: "10px" }}>จำนวน</th>
+                      <th style={{ padding: "10px" }}>วันที่รับเข้า</th>
+                    </tr>
+                  </thead>
+
+                  <tbody>
+                    {stockItems.map((item, index) => (
+                      <tr key={item.id}>
+                        <td style={{ padding: "10px" }}>
+                          {index + 1}
+                        </td>
+
+                        <td style={{ padding: "10px" }}>
+                          {item.ticketNumber || item.number}
+                        </td>
+
+                        <td style={{ padding: "10px" }}>
+                          {item.number}
+                        </td>
+
+                        <td style={{ padding: "10px" }}>
+                          {item.quantity}
+                        </td>
+
+                        <td style={{ padding: "10px" }}>
+                        {formatDate(item.date)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+        )}
+
+        {activeMenu === "scan" && (
+          <section
+            style={{
+              background: "white",
+              padding: "20px",
+              borderRadius: "15px",
+              marginBottom: "20px",
+              textAlign: "center",
+              boxShadow: "0 2px 8px #0002",
+            }}
+          >
+            <h2 style={{ marginTop: 0 }}>
+              📷 สแกนบาร์โค้ด
+            </h2>
+
+            
+            <p>
+              ใช้เครื่องสแกน USB หรือ Bluetooth
+              ส่งเลขสลากเข้าช่องด้านล่าง
+            </p>
+
+            <input
+              type="text"
+              value={scanNumber}
+              onChange={(e) => setScanNumber(e.target.value)}
+              placeholder="สแกนเลขสลาก 6 หลัก"
+              maxLength={6}
+              autoFocus
+              style={{
+                width: "100%",
+                padding: "15px",
+                fontSize: "22px",
+                textAlign: "center",
+                border: "1px solid #d1d5db",
+                borderRadius: "10px",
+                boxSizing: "border-box",
+                marginBottom: "12px",
+              }}
+            />
+
+           <button
+  type="button"
+  onClick={saveScannedStock}
+  disabled={!/^\d{6}$/.test(scanNumber.trim())}
+              style={{
+                width: "100%",
+                padding: "15px",
+                background: "#166534",
+                color: "white",
+                border: "none",
+                borderRadius: "10px",
+                fontSize: "18px",
+                fontWeight: "bold",
+                cursor: "pointer",
+                marginBottom: "15px",
+              }}
+            >
+              📥 บันทึกสแกนเข้าสต๊อก
+            </button>
+            {/* ตารางรายการสลากที่สแกนแล้ว */}
+<div
+  style={{
+    marginTop: "25px",
+    marginBottom: "25px",
+    background: "#f9fafb",
+    padding: "15px",
+    borderRadius: "12px",
+    overflowX: "auto",
+    textAlign: "left",
+  }}
+>
+  <h3
+    style={{
+      textAlign: "center",
+      color: "#166534",
+      marginTop: 0,
+    }}
+  >
+    📋 รายการสลากที่สแกนแล้ว
+  </h3>
+
+  <table
+    style={{
+      width: "100%",
+      minWidth: "650px",
+      borderCollapse: "collapse",
+      background: "white",
+    }}
+  >
+    <thead>
+      <tr style={{ background: "#166534", color: "white" }}>
+        <th style={{ padding: "10px", border: "1px solid #ddd" }}>
+          ลำดับ
+        </th>
+        <th style={{ padding: "10px", border: "1px solid #ddd" }}>
+          เลขสลาก 6 หลัก
+        </th>
+        <th style={{ padding: "10px", border: "1px solid #ddd" }}>
+          เลข 3 ตัว
+        </th>
+        <th style={{ padding: "10px", border: "1px solid #ddd" }}>
+          จำนวน
+        </th>
+        <th style={{ padding: "10px", border: "1px solid #ddd" }}>
+          วันที่
+        </th>
+        <th style={{ padding: "10px", border: "1px solid #ddd" }}>
+          วิธีนำเข้า
+        </th>
+      </tr>
+    </thead>
+
+    <tbody>
+      {stockItems
+        .filter((item) => item.importMethod === "สแกน")
+        .map((item, index) => (
+          <tr key={item.id}>
+            <td
+              style={{
+                padding: "10px",
+                border: "1px solid #ddd",
+                textAlign: "center",
+              }}
+            >
+              {index + 1}
+            </td>
+
+            <td
+              style={{
+                padding: "10px",
+                border: "1px solid #ddd",
+                textAlign: "center",
+                fontWeight: "bold",
+              }}
+            >
+              {item.ticketNumber}
+            </td>
+
+            <td
+              style={{
+                padding: "10px",
+                border: "1px solid #ddd",
+                textAlign: "center",
+              }}
+            >
+              {item.number}
+            </td>
+
+            <td
+              style={{
+                padding: "10px",
+                border: "1px solid #ddd",
+                textAlign: "center",
+              }}
+            >
+              {item.quantity}
+            </td>
+
+            <td
+              style={{
+                padding: "10px",
+                border: "1px solid #ddd",
+                textAlign: "center",
+              }}
+            >
+              {item.date.split("-").reverse().join("/")}
+            </td>
+
+            <td
+              style={{
+                padding: "10px",
+                border: "1px solid #ddd",
+                textAlign: "center",
+                color: "#166534",
+              }}
+            >
+              {item.importMethod}
+            </td>
+          </tr>
+        ))}
+
+      {stockItems.filter((item) => item.importMethod === "สแกน").length ===
+        0 && (
+        <tr>
+          <td
+            colSpan={6}
+            style={{
+              padding: "20px",
+              textAlign: "center",
+              color: "#6b7280",
+            }}
+          >
+            ยังไม่มีรายการสแกน
+          </td>
+        </tr>
+      )}
+    </tbody>
+  </table>
+</div>
+            <p>
+              เลขที่รับจากเครื่องสแกน:
+              <strong>
+                {scanNumber || "ยังไม่มีข้อมูล"}
+              </strong>
+            </p>
+
+           
+            <p style={{ color: "#6b7280" }}>
+  ขั้นตอนนี้เป็นช่องทดสอบรับข้อมูล
+</p>
+          </section>
+        )}
+
+        {activeMenu === "stock" && (
+          <section
+            style={{
+              background: "white",
+              padding: "15px",
+              borderRadius: "15px",
+              marginBottom: "20px",
+              textAlign: "center",
+            }}
+          >
+            <strong>
+              📦 เมนูรับสต๊อก
+            </strong>
+
+            <p style={{ marginBottom: 0 }}>
+              ใช้ส่วนบันทึกสต๊อกด้านล่างเพื่อเพิ่มรายการสลาก
+            </p>
+          </section>
+        )}
+        {/* สรุปยอด - แสดงเฉพาะหน้าบันทึกการขาย */}
+        <section
+          style={{
+            display: activeMenu === "sales" ? "grid" : "none",
+            gridTemplateColumns:
+              "repeat(auto-fit,minmax(180px,1fr))",
+            gap: "12px",
+            marginBottom: "20px",
+          }}
+        >
+
+          <div
+            style={{
+              background: "white",
+              padding: "20px",
+              borderRadius: "15px",
+              textAlign: "center",
+              boxShadow: "0 2px 8px #0002",
+            }}
+          >
+            <div>รายการขาย</div>
+
+            <strong
+              style={{
+                fontSize: "30px",
+              }}
+            >
+              {selectedSales.length}
+            </strong>
+            <div>รายการ</div>
+          </div>
+
+          <div
+            style={{
+              background: "white",
+              padding: "20px",
+              borderRadius: "15px",
+              textAlign: "center",
+              boxShadow: "0 2px 8px #0002",
+            }}
+          >
+            <div>จำนวนที่ขาย</div>
+
+            <strong
+              style={{
+                fontSize: "30px",
+              }}
+            >
+              {totalQuantity}
+            </strong>
+
+            <div>ใบ</div>
+          </div>
+
+          <div
+            style={{
+              background: "white",
+              padding: "20px",
+              borderRadius: "15px",
+              textAlign: "center",
+              boxShadow: "0 2px 8px #0002",
+            }}
+          >
+            <div>ยอดขายรวม</div>
+
+            <strong
+              style={{
+                fontSize: "30px",
+              }}
+            >
+              {totalMoney.toLocaleString()}
+            </strong>
+
+            <div>บาท</div>
+          </div>
+
+        </section>
+
+        {/* เพิ่มรายการขาย */}
+        <section
+          style={{
+            background: "white",
+            display: activeMenu === "sales" ? "block" : "none",
+            padding: "22px",
+            borderRadius: "18px",
+            marginBottom: "20px",
+            boxShadow: "0 2px 8px #0002",
+          }}
+        >
+
+          <h2 style={{ marginTop: 0 }}>
+            🧾 บันทึกรายการขาย
+          </h2>
+
+        
+{/* วันที่ขาย */}
+
+
+
+
+{/* วันที่ขาย */}
+<div style={{ marginBottom: "15px" }}>
+  <label
+    style={{
+      display: "block",
+      fontWeight: "bold",
+      marginBottom: "8px",
+      fontSize: "18px",
+    }}
+  >
+    📅 วันที่ขาย
+  </label>
+
+  <div
+    style={{
+      position: "relative",
+      width: "100%",
+    }}
+  >
+    {/* วันที่แสดงให้ผู้ใช้เห็นเป็น DD/MM/YYYY */}
+    <div
+      style={{
+        width: "100%",
+        boxSizing: "border-box",
+        padding: "14px",
+        border: "1px solid #ccc",
+        borderRadius: "10px",
+        fontSize: "18px",
+        background: "#ffffff",
+      }}
+    >
+      {selectedDate
+        ? `${selectedDate.slice(8, 10)}/${selectedDate.slice(5, 7)}/${selectedDate.slice(0, 4)}`
+        : "ยังไม่ได้เลือกวันที่"}
+    </div>
+
+    {/* ช่องปฏิทินสำหรับเลือกวันที่ */}
+    <input
+      type="date"
+      value={selectedDate}
+      onChange={(e) => setSelectedDate(e.target.value)}
+      aria-label="เลือกวันที่ขาย"
+      style={{
+        position: "absolute",
+        right: "10px",
+        top: "50%",
+        transform: "translateY(-50%)",
+        width: "42px",
+        height: "42px",
+        opacity: 0,
+        cursor: "pointer",
+      }}
+    />
+
+    {/* ปุ่มปฏิทิน */}
+    <span
+      style={{
+        position: "absolute",
+        right: "12px",
+        top: "50%",
+        transform: "translateY(-50%)",
+        fontSize: "24px",
+        pointerEvents: "none",
+      }}
+    >
+      📅
+    </span>
+  </div>
+</div>
+
+{/* เลข */}
+<div>
+  <label>เลข</label>
+
+  <input
+    value={number}
+    onChange={(e) =>
+      setNumber(e.target.value.replace(/\D/g, ""))
+    }
+    maxLength={6}
+placeholder="เช่น 123 หรือ 123456"
+    style={{
+      ...inputStyle,
+      width: "100%",
+      height: "52px",
+      boxSizing: "border-box",
+    }}
+  />
+</div>
+
+{/* จำนวน */}
+<div>
+  <label>จำนวน</label>
+
+  <select
+    value={quantity}
+    onChange={(e) => setQuantity(e.target.value)}
+    style={inputStyle}
+  >
+   {Array.from({ length: 100 }, (_, index) => {
+  const amount = index + 1;
+
+  return (
+    <option key={amount} value={amount}>
+      {amount} ใบ
+    </option>
+  );
+})}
+  </select>
+</div>
+
+{/* ราคา */}
+<div>
+  <label>ราคาต่อใบ</label>
+
+  <input
+    type="number"
+    min="1"
+    value={price}
+    onChange={(e) => setPrice(e.target.value)}
+    style={inputStyle}
+  />
+
+  <button
+    type="button"
+    onClick={addSale}
+    style={{
+      width: "auto",
+      minWidth: "145px",
+      padding: "14px 20px",
+      border: 0,
+      borderRadius: "10px",
+      background: "#16a34a",
+      color: "white",
+      fontSize: "18px",
+      fontWeight: "bold",
+      cursor: "pointer",
+    }}
+  >
+    + บันทึกการขาย
+  </button>
+</div>
+
+</section>
+{/* ระบบสต๊อกหวย */}
+<section
+  style={{
+    display: activeMenu === "stock" ? "block" : "none",
+    background: "white",
+    padding: "20px",
+    borderRadius: "18px",
+    marginBottom: "20px",
+  }}
+>
+  <h2
+    style={{
+      fontSize: "22px",
+      fontWeight: "bold",
+      marginBottom: "20px",
+      color: "#166534",
+    }}
+  >
+    📦 จัดการสต๊อกหวย
+  </h2>
+
+{/* แถวกรอกเลขสลาก จำนวน และเพิ่มสต๊อก */}
+<div
+  style={{
+    display: "grid",
+    gridTemplateColumns: "minmax(0, 1fr) 240px 190px",
+    gap: "8px",
+    alignItems: "start",
+    paddingTop: "8px",
+    marginBottom: "15px",
+  }}
+>
+{/* เลขสลากกินแบ่งรัฐบาล 6 หลัก */}
+<div style={{ marginBottom: 0 }}>
+  <label
+    style={{
+      display: "block",
+      marginBottom: "8px",
+      fontWeight: "bold",
+    }}
+  >
+    เลขสลากกินแบ่งรัฐบาล 6 หลัก
+  </label>
+
+  <input
+    type="text"
+    inputMode="numeric"
+    maxLength={6}
+    placeholder="เช่น 730640"
+    value={stockNumber}
+    onChange={(e) =>
+      setStockNumber(
+        e.target.value.replace(/\D/g, "").slice(0, 6)
+      )
+    }
+    onKeyDown={(e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        addStock();
+      }
+    }}
+    style={inputStyle}
+  />
+
+
+</div>
+
+  {/* จำนวนสต๊อก */}
+<div style={{ marginBottom: 0, marginTop: "32px" }}>
+    <label
+      style={{
+        display: "block",
+        marginBottom: "8px",
+        fontWeight: "bold",
+      }}
+    >
+       
+    </label>
+
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "56px minmax(60px, 1fr) 56px",
+        height: "52px",
+        border: "1px solid #cbd5e1",
+        borderRadius: "10px",
+        overflow: "hidden",
+        background: "white",
+      }}
+    >
+      <button
+        type="button"
+        onClick={() =>
+          setStockQuantity(
+            String(Math.max(1, Number(stockQuantity || 1) - 1))
+          )
+        }
+        style={{
+          border: 0,
+          background: "#e2e8f0",
+          fontSize: "26px",
+          fontWeight: "bold",
+          cursor: "pointer",
+        }}
+      >
+        −
+      </button>
+
+      <input
+        type="number"
+        min="1"
+        value={stockQuantity}
+        onChange={(e) => setStockQuantity(e.target.value)}
+        style={{
+          width: "100%",
+          minWidth: 0,
+          border: 0,
+          outline: "none",
+          textAlign: "center",
+          fontSize: "20px",
+          fontWeight: "bold",
+        }}
+      />
+
+      <button
+        type="button"
+        onClick={() =>
+          setStockQuantity(
+            String(Number(stockQuantity || 1) + 1)
+          )
+        }
+        style={{
+          border: 0,
+          background: "#e2e8f0",
+          fontSize: "26px",
+          fontWeight: "bold",
+          cursor: "pointer",
+        }}
+      >
+        +
+      </button>
+    </div>
+  </div>
+
+  {/* ปุ่มเพิ่มสต๊อก */}
+  <button
+    type="button"
+    onClick={addStock}
+    style={{
+      width: "100%",
+      height: "52px",
+      marginTop: "39px",
+      
+   transform: "translateY(0px)",
+      padding: "0 14px",
+      border: 0,
+      borderRadius: "10px",
+      background: "#2563eb",
+      color: "white",
+      fontSize: "18px",
+      fontWeight: "bold",
+      cursor: "pointer",
+    }}
+  >
+    + เพิ่มสต๊อก
+  </button>
+</div>
+
+  {/* รายการสต๊อก */}
+  <h3
+    style={{
+      fontSize: "18px",
+      fontWeight: "bold",
+      marginTop: "25px",
+      marginBottom: "10px",
+    }}
+  >
+    รายการสต๊อก
+  </h3>
+
+  {stockItems.length === 0 ? (
+    <p style={{ color: "#666" }}>ยังไม่มีรายการสต๊อก</p>
+  ) : (
+    <div style={{ overflowX: "auto" }}>
+      <table
+        style={{
+          width: "100%",
+          borderCollapse: "collapse",
+          textAlign: "center",
+          minWidth: "600px",
+        }}
+      >
+        <thead>
+          <tr
+            style={{
+              background: "#2563eb",
+              color: "white",
+            }}
+          >
+            <th style={{ padding: "12px" }}>ลำดับ</th>
+            <th style={{ padding: "12px" }}>
+              เลขสลาก 6 หลัก
+            </th>
+            <th style={{ padding: "12px" }}>
+              เลขท้าย 3 ตัว
+            </th>
+            <th style={{ padding: "12px" }}>
+              จำนวน
+            </th>
+            <th style={{ padding: "12px" }}>
+              วันที่รับเข้า
+            </th>
+            <th style={{ padding: "12px" }}>
+              วิธีรับเข้า
+            </th>
+            <th style={{ padding: "12px" }}>
+              จัดการ
+            </th>
+          </tr>
+        </thead>
+
+        <tbody>
+          {stockItems.map((item, index) => (
+            <tr
+              key={item.id}
+              style={{
+                borderBottom: "1px solid #ddd",
+              }}
+            >
+              <td style={{ padding: "12px" }}>
+                {index + 1}
+              </td>
+
+              <td
+                style={{
+                  padding: "12px",
+                  fontWeight: "bold",
+                  color: "#166534",
+                  fontSize: "18px",
+                }}
+              >
+                {item.ticketNumber || item.number}
+              </td>
+
+              <td style={{ padding: "12px" }}>
+                {item.number}
+              </td>
+
+              <td style={{ padding: "12px" }}>
+                {item.quantity} ใบ
+              </td>
+
+              <td style={{ padding: "12px" }}>
+                {formatDate(item.date)}
+              </td>
+
+              <td style={{ padding: "12px" }}>
+                <span
+                  style={{
+                    display: "inline-block",
+                    padding: "6px 12px",
+                    borderRadius: "8px",
+                    background:
+                      item.importMethod === "สแกน"
+                        ? "#dcfce7"
+                        : "#dbeafe",
+                    color:
+                      item.importMethod === "สแกน"
+                        ? "#166534"
+                        : "#1d4ed8",
+                    fontWeight: "bold",
+                  }}
+                >
+                  {item.importMethod || "พิมพ์"}
+                </span>
+              </td>
+
+              <td style={{ padding: "12px" }}>
+                <button
+                  type="button"
+                  onClick={() => deleteStock(item.id)}
+                  style={{
+                    background: "#dc2626",
+                    color: "white",
+                    border: 0,
+                    borderRadius: "8px",
+                    padding: "8px 14px",
+                    cursor: "pointer",
+                    fontWeight: "bold",
+                  }}
+                >
+                  🗑️ ลบ
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )}
+</section>
+ 
+
+
+
+<section
+  style={{
+    display: activeMenu === "report" ? "block" : "none",
+    background: "white",
+    padding: "20px",
+    borderRadius: "18px",
+    marginBottom: "20px",
+  }}
+>
+{/* สำรองและกู้คืนข้อมูล */}
+{/* ตารางสรุปสต๊อก */}
+<section
+  style={{
+    background: "white",
+    padding: "20px",
+    borderRadius: "18px",
+    marginBottom: "20px",
+    boxShadow: "0 2px 8px #0002",
+  }}
+>
+  <h2 style={{ marginTop: 0 }}>
+    📊 สรุปสต๊อกแยกตามเลขหวย
+  </h2>
+
+  <div style={{ overflowX: "auto" }}>
+    <table
+      style={{
+        width: "100%",
+        borderCollapse: "collapse",
+        textAlign: "center",
+      }}
+    >
+      <thead>
+        <tr style={{ background: "#2563eb", color: "white" }}>
+          <th style={{ padding: "12px" }}>เลขหวย</th>
+<th style={{ padding: "12px" }}>รับเข้าสะสม</th>
+<th style={{ padding: "12px" }}>ขายแล้ว</th>
+<th style={{ padding: "12px" }}>คงเหลือ</th>
+<th style={{ padding: "12px" }}>สถานะ</th>
+        </tr>
+      </thead>
+
+      <tbody>
+        {stockSummary.map((item) => (
+          <tr key={`${item.number}-${item.lastThree}`}>
+            <td style={{ padding: "12px", borderBottom: "1px solid #ddd" }}>
+              <strong>{item.number}</strong>
+            </td>
+
+            <td style={{ padding: "12px", borderBottom: "1px solid #ddd" }}>
+              {item.received}
+            </td>
+
+            <td style={{ padding: "12px", borderBottom: "1px solid #ddd" }}>
+              {item.sold}
+            </td>
+
+           <td
+  style={{
+    padding: "12px",
+    borderBottom: "1px solid #ddd",
+    fontWeight: "bold",
+    color:
+      item.remaining < 0
+        ? "red"
+        : item.remaining === 0
+        ? "#dc2626"
+        : "green",
+  }}
+>
+  {item.remaining}
+</td>
+
+<td
+  style={{
+    padding: "12px",
+    borderBottom: "1px solid #ddd",
+    fontWeight: "bold",
+    color: item.remaining === 0 ? "#dc2626" : "green",
+  }}
+>
+  {item.remaining === 0
+    ? "ขายหมดแล้ว"
+    : item.remaining < 0
+    ? "ขายเกินสต๊อก"
+    : "ยังมีสต๊อก"}
+</td>
+            
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+</section>
+<section
+
+          style={{
+            background: "white",
+            padding: "20px",
+            borderRadius: "18px",
+            marginBottom: "20px",
+            boxShadow: "0 2px 8px #0002",
+          }}
+        >
+          <h2 style={{ marginTop: 0 }}>
+            💾 สำรองและกู้คืนข้อมูล
+          </h2>
+
+          <div
+            style={{
+              display: "flex",
+              gap: "12px",
+              flexWrap: "wrap",
+            }}
+          >
+            <button
+              onClick={backupData}
+              style={{
+                padding: "12px 18px",
+                border: "none",
+                borderRadius: "10px",
+                background: "#16a34a",
+                color: "white",
+                cursor: "pointer",
+                fontSize: "16px",
+                fontWeight: "bold",
+              }}
+            >
+              💾 สำรองข้อมูล
+            </button>
+
+            <button
+              onClick={restoreData}
+              style={{
+                padding: "12px 18px",
+                border: "none",
+                borderRadius: "10px",
+                background: "#f59e0b",
+                color: "white",
+                cursor: "pointer",
+                fontSize: "16px",
+                fontWeight: "bold",
+              }}
+            >
+              📂 กู้คืนข้อมูล
+            </button>
+                        <button
+              onClick={exportCSV}
+              style={{
+                padding: "12px 18px",
+                border: "none",
+                borderRadius: "10px",
+                background: "#16a34a",
+                color: "white",
+                cursor: "pointer",
+                fontSize: "16px",
+                fontWeight: "bold",
+              }}
+            >
+              📥 ส่งออก CSV
+            </button>
+          </div>
+
+          <div
+            style={{
+              marginTop: "12px",
+              color: "#666",
+              fontSize: "14px",
+            }}
+          >
+            💡 แนะนำให้สำรองข้อมูลเป็นประจำ เพื่อป้องกันข้อมูลสูญหาย
+          </div>
+        </section>
+
+        {/* สรุปยอดตามเลข */}
+        <section
+          style={{
+            background: "white",
+            padding: "20px",
+            borderRadius: "18px",
+            marginBottom: "20px",
+            boxShadow: "0 2px 8px #0002",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              gap: "10px",
+              marginBottom: "15px",
+            }}
+          >
+            <h2 style={{ margin: 0 }}>
+              📊 สรุปยอดตามเลข
+            </h2>
+
+            <button
+              onClick={printReport}
+              style={{
+                background: "#2563eb",
+                color: "white",
+                border: 0,
+                borderRadius: "8px",
+                padding: "10px 16px",
+                cursor: "pointer",
+                fontWeight: "bold",
+              }}
+            >
+              🖨️ พิมพ์รายงาน
+            </button>
+          </div>
+
+          {numberSummary.length === 0 ? (
+            <div
+              style={{
+                padding: "20px",
+                textAlign: "center",
+                color: "#777",
+              }}
+            >
+              ยังไม่มีข้อมูลสรุป
+            </div>
+          ) : (
+            <div style={{ overflowX: "auto" }}>
+              <table
+                style={{
+                  width: "100%",
+                  borderCollapse: "collapse",
+                }}
+              >
+                <thead>
+                  <tr>
+                    <th style={thStyle}>เลข</th>
+                    <th style={thStyle}>รายการ</th>
+                    <th style={thStyle}>จำนวนใบ</th>
+                    <th style={thStyle}>ยอดเงิน</th>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {numberSummary.map((item) => (
+                    <tr key={item.number}>
+                      <td style={tdStyle}>{item.number}</td>
+                      <td style={tdStyle}>{item.count} รายการ</td>
+                      <td style={tdStyle}>{item.quantity} ใบ</td>
+                      <td style={tdStyle}>
+                        {item.total.toLocaleString()} บาท
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+
+        {/* สรุปยอดรายเดือน */}
+        <section
+          style={{
+            background: "white",
+            padding: "20px",
+            borderRadius: "18px",
+            marginBottom: "20px",
+            boxShadow: "0 2px 8px #0002",
+          }}
+        >
+          <h2 style={{ marginTop: 0 }}>
+            📅 สรุปยอดรายเดือน
+          </h2>
+
+          <label>เลือกเดือน</label>
+
+          <input
+            type="month"
+            value={selectedMonth}
+            onChange={(e) => setSelectedMonth(e.target.value)}
+            style={inputStyle}
+          />
+
+          <button
+            onClick={printMonthlyReport}
+            style={{
+              marginTop: "15px",
+              padding: "10px 16px",
+              border: "none",
+              borderRadius: "10px",
+              background: "#333",
+              color: "white",
+              cursor: "pointer",
+              fontSize: "16px",
+            }}
+          >
+            🖨️ พิมพ์รายงานรายเดือน
+          </button>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns:
+                "repeat(auto-fit,minmax(180px,1fr))",
+              gap: "12px",
+              marginTop: "15px",
+            }}
+          >
+            <div
+              style={{
+                padding: "18px",
+                background: "#f5f7fa",
+                borderRadius: "12px",
+                textAlign: "center",
+              }}
+            >
+              <div>📅 วันที่มีการขาย</div>
+              <strong style={{ fontSize: "28px" }}>
+                {monthlyDays}
+              </strong>
+              <div>วัน</div>
+            </div>
+
+            <div
+              style={{
+                padding: "18px",
+                background: "#f5f7fa",
+                borderRadius: "12px",
+                textAlign: "center",
+              }}
+            >
+              <div>🧾 รายการขาย</div>
+              <strong style={{ fontSize: "28px" }}>
+                {monthlySales.length}
+              </strong>
+              <div>รายการ</div>
+            </div>
+
+            <div
+              style={{
+                padding: "18px",
+                background: "#f5f7fa",
+                borderRadius: "12px",
+                textAlign: "center",
+              }}
+            >
+              <div>🎟️ จำนวนใบ</div>
+              <strong style={{ fontSize: "28px" }}>
+                {monthlyQuantity}
+              </strong>
+              <div>ใบ</div>
+            </div>
+
+            <div
+              style={{
+                padding: "18px",
+                background: "#f5f7fa",
+                borderRadius: "12px",
+                textAlign: "center",
+              }}
+            >
+              <div>💰 ยอดขายรวม</div>
+              <strong style={{ fontSize: "28px" }}>
+                {monthlyMoney.toLocaleString()}
+              </strong>
+              <div>บาท</div>
+            </div>
+          </div>
+        </section>
+
+        {/* รายละเอียดการขายรายวัน */}
+        
+          <h2 style={{ marginTop: 0 }}>
+            📋 รายละเอียดการขายรายวัน
+          </h2>
+
+          {dailySummary.length === 0 ? (
+            <div
+              style={{
+                padding: "20px",
+                textAlign: "center",
+                color: "#777",
+              }}
+            >
+              เดือนนี้ยังไม่มีข้อมูลการขาย
+            </div>
+          ) : (
+            <div style={{ overflowX: "auto" }}>
+              <table
+                style={{
+                  width: "100%",
+                  borderCollapse: "collapse",
+                }}
+              >
+                <thead>
+                  <tr>
+                    <th style={thStyle}>วันที่</th>
+                    <th style={thStyle}>รายการ</th>
+                    <th style={thStyle}>จำนวนใบ</th>
+                    <th style={thStyle}>ยอดขาย</th>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {dailySummary.map((item) => (
+                    <tr key={item.date}>
+                      <td style={tdStyle}>
+                        {new Date(
+                          item.date + "T00:00:00"
+                        ).toLocaleDateString("th-TH")}
+                      </td>
+                      <td style={tdStyle}>
+                        {item.count} รายการ
+                      </td>
+                      <td style={tdStyle}>
+                        {item.quantity} ใบ
+                      </td>
+                      <td style={tdStyle}>
+                        {item.total.toLocaleString()} บาท
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+
+                <tfoot>
+                  <tr>
+                    <td
+                      style={{
+                        ...tdStyle,
+                        fontWeight: "bold",
+                      }}
+                    >
+                      รวม
+                    </td>
+                    <td
+                      style={{
+                        ...tdStyle,
+                        fontWeight: "bold",
+                      }}
+                    >
+                      {monthlySales.length} รายการ
+                    </td>
+                    <td
+                      style={{
+                        ...tdStyle,
+                        fontWeight: "bold",
+                      }}
+                    >
+                      {monthlyQuantity} ใบ
+                    </td>
+                    <td
+                      style={{
+                        ...tdStyle,
+                        fontWeight: "bold",
+                      }}
+                    >
+                      {monthlyMoney.toLocaleString()} บาท
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          )}
+        </section>
+
+        {/* รายงานยอดขายรายวัน */}
+        <section
+          style={{
+            display: activeMenu === "report" ? "block" : "none",
+            background: "white",
+            padding: "20px",
+            borderRadius: "18px",
+            marginBottom: "20px",
+            boxShadow: "0 2px 8px #0002",
+          }}
+        >
+          <h2 style={{ marginTop: 0 }}>
+            📊 รายงานยอดขายรายวัน
+          </h2>
+
+          <div
+  style={{
+    background: "#f5f7fa",
+    padding: "15px",
+    borderRadius: "12px",
+    marginBottom: "15px",
+    textAlign: "center",
+    fontSize: "18px",
+    fontWeight: "bold",
+  }}
+>
+  </div>
+
+<div
+  style={{
+    display: "grid",
+    gridTemplateColumns:
+      "repeat(auto-fit,minmax(180px,1fr))",
+    gap: "12px",
+  }}
+>
+
+            <div
+              style={{
+                padding: "18px",
+                background: "white",
+                border: "1px solid #eee",
+                borderRadius: "12px",
+                textAlign: "center",
+              }}
+            >
+              <div>รายการขาย</div>
+              <strong style={{ fontSize: "26px" }}>
+                {selectedSales.length}
+              </strong>
+              <div>รายการ</div>
+            </div>
+
+            <div
+              style={{
+                padding: "18px",
+                background: "white",
+                border: "1px solid #eee",
+                borderRadius: "12px",
+                textAlign: "center",
+              }}
+            >
+              <div>จำนวนทั้งหมด</div>
+              <strong style={{ fontSize: "26px" }}>
+                {totalQuantity}
+              </strong>
+              <div>ใบ</div>
+            </div>
+
+            <div
+              style={{
+                padding: "18px",
+                background: "white",
+                border: "1px solid #eee",
+                borderRadius: "12px",
+                textAlign: "center",
+              }}
+            >
+              <div>ยอดขายรวม</div>
+              <strong style={{ fontSize: "26px" }}>
+                {totalMoney.toLocaleString()}
+              </strong>
+              <div>บาท</div>
+            </div>
+          </div>
+
+          <div style={{ textAlign: "center", marginTop: "18px" }}>
+            <button
+              onClick={printReport}
+              style={{
+                background: "#2563eb",
+                color: "white",
+                border: 0,
+                borderRadius: "8px",
+                padding: "11px 20px",
+                cursor: "pointer",
+                fontWeight: "bold",
+                fontSize: "16px",
+              }}
+            >
+              🖨️ พิมพ์รายงานวันนี้
+            </button>
+          </div>
+        </section>
+
+        {/* ค้นหา */}
+        <section
+          style={{
+            display: activeMenu === "sales" ? "block" : "none",
+            background: "white",
+            padding: "20px",
+            borderRadius: "18px",
+            marginBottom: "20px",
+          }}
+        >
+
+          <input
+            value={search}
+            onChange={(e) =>
+              setSearch(e.target.value)
+            }
+            placeholder="🔎 ค้นหาเลขที่ขาย..."
+            style={{
+              width: "100%",
+              boxSizing: "border-box",
+              padding: "14px",
+              border: "1px solid #ccc",
+              borderRadius: "10px",
+              fontSize: "18px",
+            }}
+          />
+
+        </section>
+        {/* หน้าต่างแก้ไขรายการ */}
+        {editingSale && activeMenu === "sales" && (
+          <section
+            style={{
+              background: "white",
+              padding: "20px",
+              borderRadius: "18px",
+              marginBottom: "20px",
+              boxShadow: "0 2px 8px #0002",
+              border: "2px solid #2563eb",
+            }}
+          >
+            <h2 style={{ marginTop: 0 }}>
+              ✏️ แก้ไขรายการขาย
+            </h2>
+
+            <div
+              style={{
+                display: "grid",
+                gap: "12px",
+              }}
+            >
+              <label>
+                เลข
+                <input
+                  value={editingSale.number}
+                  onChange={(e) =>
+                    setEditingSale({
+                      ...editingSale,
+                      number: e.target.value,
+                    })
+                  }
+                  style={inputStyle}
+                />
+              </label>
+
+              <label>
+                จำนวนใบ
+                <input
+                  type="number"
+                  min="1"
+                  value={editingSale.quantity}
+                  onChange={(e) =>
+                    setEditingSale({
+                      ...editingSale,
+                      quantity: Number(e.target.value),
+                    })
+                  }
+                  style={inputStyle}
+                />
+              </label>
+
+              <label>
+                ราคา/ใบ
+                <input
+                  type="number"
+                  min="1"
+                  value={editingSale.price}
+                  onChange={(e) =>
+                    setEditingSale({
+                      ...editingSale,
+                      price: Number(e.target.value),
+                    })
+                  }
+                  style={inputStyle}
+                />
+              </label>
+
+              <div
+                style={{
+                  fontSize: "18px",
+                  fontWeight: "bold",
+                  textAlign: "center",
+                  padding: "10px",
+                  background: "#f5f7fa",
+                  borderRadius: "10px",
+                }}
+              >
+                ยอดรวม:{" "}
+                {(
+                  editingSale.quantity * editingSale.price
+                ).toLocaleString()}{" "}
+                บาท
+              </div>
+
+              <div
+                style={{
+                  display: "flex",
+                  gap: "10px",
+                  justifyContent: "center",
+                  marginTop: "5px",
+                }}
+              >
+                <button
+                  onClick={saveEditSale}
+                  style={{
+                    background: "#16a34a",
+                    color: "white",
+                    border: 0,
+                    borderRadius: "8px",
+                    padding: "11px 20px",
+                    cursor: "pointer",
+                    fontWeight: "bold",
+                  }}
+                >
+                  💾 บันทึกการแก้ไข
+                </button>
+
+                <button
+                  onClick={() => setEditingSale(null)}
+                  style={{
+                    background: "#6b7280",
+                    color: "white",
+                    border: 0,
+                    borderRadius: "8px",
+                    padding: "11px 20px",
+                    cursor: "pointer",
+                    fontWeight: "bold",
+                  }}
+                >
+                  ยกเลิก
+                </button>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {/* ตารางรายการขาย - แสดงเฉพาะหน้าบันทึกการขาย */}
+        <section
+          style={{
+            display: activeMenu === "sales" ? "block" : "none",
+            background: "white",
+            borderRadius: "18px",
+            overflow: "hidden",
+            boxShadow: "0 2px 8px #0002",
+          }}
+        >
+
+          <div
+            style={{
+              padding: "20px",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+            }}
+          >
+
+            <h2 style={{ margin: 0 }}>
+              📋 รายการขาย
+            </h2>
+
+            <button
+              onClick={clearAll}
+              style={{
+                background: "#dc2626",
+                color: "white",
+                border: 0,
+                borderRadius: "8px",
+                padding: "10px 15px",
+                cursor: "pointer",
+              }}
+            >
+              ล้างทั้งหมด
+            </button>
+
+          </div>
+
+          {filteredSales.length === 0 ? (
+
+            <div
+              style={{
+                padding: "50px",
+                textAlign: "center",
+                color: "#777",
+              }}
+            >
+              ยังไม่มีรายการขาย
+            </div>
+
+          ) : (
+
+            <div style={{ overflowX: "auto" }}>
+
+              <table
+                style={{
+                  width: "100%",
+                  borderCollapse: "collapse",
+                  minWidth: "650px",
+                }}
+              >
+
+                <thead>
+                  <tr
+                    style={{
+                      background: "#f1f5f9",
+                    }}
+                  >
+                    <th style={thStyle}>ลำดับ</th>
+                    <th style={thStyle}>วันที่</th>
+                    <th style={thStyle}>เลข</th>
+                    <th style={thStyle}>จำนวน</th>
+                    <th style={thStyle}>ราคา/ใบ</th>
+                    <th style={thStyle}>ยอดเงิน</th>
+                    <th style={thStyle}>จัดการ</th>
+                  </tr>
+                </thead>
+
+                <tbody>
+
+                  {filteredSales.map(
+                    (sale, index) => (
+                      <tr key={sale.id}>
+
+                        <td style={tdStyle}>
+                          {index + 1}
+                        </td>
+
+                        <td style={tdStyle}>
+                          {formatDate(sale.date)}
+                        </td>
+
+                        <td
+                          style={{
+                            ...tdStyle,
+                            fontSize: "22px",
+                            fontWeight: "bold",
+                          }}
+                        >
+                          {sale.number}
+                        </td>
+
+                        <td style={tdStyle}>
+                          {sale.quantity}
+                        </td>
+
+                        <td style={tdStyle}>
+                          {sale.price.toLocaleString()}
+                        </td>
+
+                        <td
+                          style={{
+                            ...tdStyle,
+                            fontWeight: "bold",
+                          }}
+                        >
+                          {sale.total.toLocaleString()}
+                        </td>
+
+                        <td style={tdStyle}>
+<button
+  onClick={() => editSale(sale.id)}
+  style={{
+    background: "#2563eb",
+    color: "white",
+    border: 0,
+    borderRadius: "8px",
+    padding: "8px 14px",
+    cursor: "pointer",
+    marginRight: "6px",
+  }}
+>
+  ✏️ แก้ไข
+</button>
+                          <button
+                            onClick={() =>
+                              deleteSale(sale.id)
+                            }
+                            style={{
+                              background: "#ef4444",
+                              color: "white",
+                              border: 0,
+                              borderRadius: "8px",
+                              padding:
+                                "8px 14px",
+                              cursor: "pointer",
+                            }}
+                          >
+                            ลบ
+                          </button>
+
+                        </td>
+
+                      </tr>
+                    )
+                  )}
+
+                </tbody>
+
+              </table>
+
+            </div>
+          )}
+
+        </section>
+
+        <div
+          style={{
+            textAlign: "center",
+            padding: "25px",
+            color: "#777",
+          }}
+        >
+          ระบบจัดการหวยหุ้น
+        </div>
+
+      </div>
+    </main>
+  );
+}
+
+const inputStyle = {
+  width: "100%",
+  boxSizing: "border-box" as const,
+  padding: "13px",
+  marginTop: "6px",
+  border: "1px solid #ccc",
+  borderRadius: "10px",
+  fontSize: "17px",
+};
+
+const thStyle = {
+  padding: "14px",
+  borderBottom: "1px solid #ddd",
+};
+
+const tdStyle = {
+  padding: "14px",
+  textAlign: "center" as const,
+  borderBottom: "1px solid #eee",
+};
