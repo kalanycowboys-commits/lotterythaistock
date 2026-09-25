@@ -185,33 +185,7 @@ if (availableStock < qty) {
       );
     })(),
   };
-
-  // หักสต๊อกตามจำนวนที่ขาย
-  let remaining = qty;
-
-  const updatedStock = stockItems
-    .map((item) => {
-      if (item.number !== saleNumber || remaining <= 0) {
-        return item;
-      }
-
-      const deducted = Math.min(item.quantity, remaining);
-      remaining -= deducted;
-
-      return {
-        ...item,
-        quantity: item.quantity - deducted,
-      };
-    })
-    .filter((item) => item.quantity > 0);
-
-  // บันทึกสต๊อกที่หักแล้ว
-  setStockItems(updatedStock);
-
-  localStorage.setItem(
-    "lottery-stock",
-    JSON.stringify(updatedStock)
-  );
+  // ไม่หักหรือลบ stockItems จริง เพื่อให้ยอดรับเข้าสะสมคงเดิม
 
   // บันทึกการขาย
   setSales((prev) => [...prev, newSale]);
@@ -2351,17 +2325,54 @@ placeholder="เช่น 123 หรือ 123456"
           </h2>
 
           <div
-  style={{
-    background: "#f5f7fa",
-    padding: "15px",
-    borderRadius: "12px",
-    marginBottom: "15px",
-    textAlign: "center",
-    fontSize: "18px",
-    fontWeight: "bold",
-  }}
->
-  </div>
+            style={{
+              background: "#f5f7fa",
+              padding: "15px",
+              borderRadius: "12px",
+              marginBottom: "15px",
+              textAlign: "center",
+            }}
+          >
+            <label
+              style={{
+                display: "block",
+                fontWeight: "bold",
+                fontSize: "18px",
+                marginBottom: "10px",
+              }}
+            >
+              📅 เลือกวันที่ต้องการดูรายงาน
+            </label>
+
+            <input
+              type="date"
+              value={selectedDate}
+              onChange={(e) => setSelectedDate(e.target.value)}
+              style={{
+                padding: "12px",
+                border: "1px solid #ccc",
+                borderRadius: "10px",
+                fontSize: "18px",
+                cursor: "pointer",
+                width: "100%",
+                maxWidth: "300px",
+                boxSizing: "border-box",
+              }}
+            />
+
+            <div
+              style={{
+                marginTop: "10px",
+                fontSize: "16px",
+                color: "#555",
+              }}
+            >
+              รายงานวันที่{" "}
+              {selectedDate
+                ? `${selectedDate.slice(8, 10)}/${selectedDate.slice(5, 7)}/${selectedDate.slice(0, 4)}`
+                : "ยังไม่ได้เลือกวันที่"}
+            </div>
+          </div>
 
 <div
   style={{
